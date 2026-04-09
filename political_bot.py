@@ -66,7 +66,9 @@ class Config:
     ANTHROPIC_API_KEY:      str   = os.getenv("ANTHROPIC_API_KEY", "")
 
     MIN_EDGE:               float = float(os.getenv("MIN_EDGE", "0.06"))
+    MAKER_FEE:              float = float(os.getenv("MAKER_FEE", "0.0175"))
     BET_SIZE_USD:           float = float(os.getenv("BET_SIZE_USD", "12.0"))
+    KELLY_FRACTION:         float = float(os.getenv("KELLY_FRACTION", "1.0"))
     MAX_OPEN_POSITIONS:     int   = int(os.getenv("MAX_OPEN_POSITIONS", "8"))
     MIN_PRICE:              int   = int(os.getenv("MIN_PRICE", "10"))
     MAX_PRICE:              int   = int(os.getenv("MAX_PRICE", "90"))
@@ -367,11 +369,18 @@ def find_trade_for_signal(
     true_prob = signal.confidence
     kalshi_prob = price / 100
     edge = true_prob - kalshi_prob
+    ev_after_fees = edge - Config.MAKER_FEE
+    if ev_after_fees <= 0:
+        log.info(f"[SKIP] {best.ticker}: negative EV after {Config.MAKER_FEE*100}% fee (edge={edge:.2f})")
+        return None
     if edge < Config.MIN_EDGE:
         log.info(f"[SKIP] {best.ticker}: edge={edge:.2f} below min {Config.MIN_EDGE}")
         return None
 
-    contracts = max(1, int(Config.BET_SIZE_USD * 100 / price))
+    # Kelly criterion: f* = (model_prob - market_prob) / (1 - market_prob)
+    kelly_f = max(0, (true_prob - kalshi_prob) / (1 - kalshi_prob)) if kalshi_prob < 1 else 0
+    kelly_bet = max(1, min(Config.PAPER_BALANCE * kelly_f * Config.KELLY_FRACTION, Config.BET_SIZE_USD * 5))
+    contracts = max(1, int(kelly_bet * 100 / price))
     return best, preferred_side, price, contracts
 
 
