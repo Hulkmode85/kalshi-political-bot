@@ -49,6 +49,17 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
 load_dotenv()
+
+# ── Shadow Logging ────────────────────────────────────────────────────────────
+SHADOW_LOG_FILE = os.getenv("SHADOW_LOG_FILE", "shadow_log.jsonl")
+
+def shadow_log(opportunity: dict, taken: bool, reason: str = ""):
+    entry = {"ts": time.time(), "taken": taken, "reason": reason, **opportunity}
+    try:
+        with open(SHADOW_LOG_FILE, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except:
+        pass
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
@@ -372,15 +383,18 @@ def find_trade_for_signal(
     ev_after_fees = edge - Config.MAKER_FEE
     if ev_after_fees <= 0:
         log.info(f"[SKIP] {best.ticker}: negative EV after {Config.MAKER_FEE*100}% fee (edge={edge:.2f})")
+        shadow_log({"bot": "political", "ticker": best.ticker, "edge": edge, "price": price}, taken=False, reason="negative EV after fees")
         return None
     if edge < Config.MIN_EDGE:
         log.info(f"[SKIP] {best.ticker}: edge={edge:.2f} below min {Config.MIN_EDGE}")
+        shadow_log({"bot": "political", "ticker": best.ticker, "edge": edge, "price": price}, taken=False, reason=f"edge below min {Config.MIN_EDGE}")
         return None
 
     # Kelly criterion: f* = (model_prob - market_prob) / (1 - market_prob)
     kelly_f = max(0, (true_prob - kalshi_prob) / (1 - kalshi_prob)) if kalshi_prob < 1 else 0
     kelly_bet = max(1, min(Config.PAPER_BALANCE * kelly_f * Config.KELLY_FRACTION, Config.BET_SIZE_USD * 5))
     contracts = max(1, int(kelly_bet * 100 / price))
+    shadow_log({"bot": "political", "ticker": best.ticker, "side": preferred_side, "edge": edge, "price": price, "contracts": contracts}, taken=True)
     return best, preferred_side, price, contracts
 
 
