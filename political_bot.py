@@ -60,6 +60,34 @@ def shadow_log(opportunity: dict, taken: bool, reason: str = ""):
             f.write(json.dumps(entry) + "\n")
     except:
         pass
+
+# ─── Regime Detection — pause trading during extreme volatility ────────────
+import statistics as _stats
+
+REGIME_WINDOW = int(os.getenv("REGIME_WINDOW", "20"))
+REGIME_THRESHOLD = float(os.getenv("REGIME_THRESHOLD", "3.0"))
+_regime_prices: list[float] = []
+
+def check_regime(price: float) -> str:
+    """Returns 'CALM', 'ELEVATED', or 'CRASH'. Skip trades during CRASH."""
+    _regime_prices.append(price)
+    if len(_regime_prices) > REGIME_WINDOW:
+        _regime_prices.pop(0)
+    if len(_regime_prices) < 5:
+        return "CALM"
+    rets = [(b - a) / a for a, b in zip(_regime_prices[:-1], _regime_prices[1:])]
+    if not rets:
+        return "CALM"
+    mu = _stats.mean(rets)
+    sd = _stats.stdev(rets) if len(rets) > 1 else 0.01
+    z = abs(rets[-1] - mu) / max(sd, 0.0001)
+    if z > REGIME_THRESHOLD:
+        return "CRASH"
+    elif z > REGIME_THRESHOLD * 0.6:
+        return "ELEVATED"
+    return "CALM"
+
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
@@ -394,6 +422,12 @@ def find_trade_for_signal(
     kelly_f = max(0, (true_prob - kalshi_prob) / (1 - kalshi_prob)) if kalshi_prob < 1 else 0
     kelly_bet = max(1, min(Config.PAPER_BALANCE * kelly_f * Config.KELLY_FRACTION, Config.BET_SIZE_USD * 5))
     contracts = max(1, int(kelly_bet * 100 / price))
+    # ── Regime detection ──
+    regime = check_regime(float(price))
+    if regime == "CRASH":
+        log.warning("REGIME CRASH on kalshi_political_bot — skipping trade")
+        shadow_log({"bot": "kalshi_political_bot", "regime": regime}, taken=False, reason="crash regime")
+        return
     shadow_log({"bot": "political", "ticker": best.ticker, "side": preferred_side, "edge": edge, "price": price, "contracts": contracts}, taken=True)
     return best, preferred_side, price, contracts
 
