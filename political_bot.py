@@ -52,6 +52,9 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
+from risk_guard import RiskManager
+risk_manager = RiskManager()
+
 # ── Config ────────────────────────────────────────────────────────────────────
 
 class Config:
@@ -498,6 +501,18 @@ def main():
                 market, side, price, contracts = result
                 log.info(f"[TRADE] {side} {market.ticker} for signal: "
                          f"{signal.signal_type}/{signal.entity}")
+
+                # ── Risk Guard check ──
+                if not Config.PAPER_MODE:
+                    allowed, reason, capped = risk_manager.pre_trade_check(market.ticker, price, contracts, side, bot_name="political-bot")
+                    if not allowed:
+                        log.warning(f"Risk guard blocked: {reason}")
+                        continue
+                    contracts = capped
+                else:
+                    allowed, reason, capped = risk_manager.pre_trade_check(market.ticker, price, contracts, side, bot_name="political-bot")
+                    if not allowed:
+                        log.info(f"[PAPER] Risk guard would block: {reason}")
 
                 if Config.PAPER_MODE:
                     if ledger.open_position(market.ticker, side, price, contracts, signal):
