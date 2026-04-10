@@ -61,6 +61,46 @@ def shadow_log(opportunity: dict, taken: bool, reason: str = ""):
     except:
         pass
 
+
+# ── Virtual Portfolio Testing ─────────────────────────────────────────────
+VIRTUAL_PORTFOLIO_FILE = os.getenv("VIRTUAL_PORTFOLIO_FILE", "virtual_portfolios.jsonl")
+
+VIRTUAL_PORTFOLIOS = [
+    {"name": "aggressive", "kelly": 1.0, "min_edge": 0.02, "early_exit": 0.99},
+    {"name": "moderate", "kelly": 0.5, "min_edge": 0.05, "early_exit": 0.93},
+    {"name": "conservative", "kelly": 0.25, "min_edge": 0.08, "early_exit": 0.90},
+    {"name": "original_v1", "kelly": 1.0, "min_edge": 0.03, "early_exit": 0.99},
+    {"name": "high_edge", "kelly": 0.5, "min_edge": 0.10, "early_exit": 0.93},
+    {"name": "ultra_conservative", "kelly": 0.25, "min_edge": 0.12, "early_exit": 0.90},
+]
+
+def evaluate_virtual_portfolios(opportunity: dict):
+    """Evaluate what each virtual portfolio would do with this opportunity."""
+    import json, time as _time
+    edge = opportunity.get("edge", 0)
+    price = opportunity.get("price", 0)
+    results = []
+    for vp in VIRTUAL_PORTFOLIOS:
+        would_trade = edge >= vp["min_edge"]
+        would_exit_early = price >= vp["early_exit"] * 100
+        results.append({
+            "portfolio": vp["name"],
+            "would_trade": would_trade,
+            "would_exit_early": would_exit_early,
+            "kelly": vp["kelly"],
+            "min_edge": vp["min_edge"],
+        })
+    entry = {
+        "ts": _time.time(),
+        "opportunity": opportunity,
+        "portfolios": results,
+    }
+    try:
+        with open(VIRTUAL_PORTFOLIO_FILE, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except:
+        pass
+
 # ─── Regime Detection — pause trading during extreme volatility ────────────
 import statistics as _stats
 
@@ -450,10 +490,12 @@ def find_trade_for_signal(
     if ev_after_fees <= 0:
         log.info(f"[SKIP] {best.ticker}: negative EV after {Config.MAKER_FEE*100}% fee (edge={edge:.2f})")
         shadow_log({"bot": "political", "ticker": best.ticker, "edge": edge, "price": price}, taken=False, reason="negative EV after fees")
+        evaluate_virtual_portfolios({"bot": "political", "ticker": best.ticker, "edge": edge, "price": price})
         return None
     if edge < Config.MIN_EDGE:
         log.info(f"[SKIP] {best.ticker}: edge={edge:.2f} below min {Config.MIN_EDGE}")
         shadow_log({"bot": "political", "ticker": best.ticker, "edge": edge, "price": price}, taken=False, reason=f"edge below min {Config.MIN_EDGE}")
+        evaluate_virtual_portfolios({"bot": "political", "ticker": best.ticker, "edge": edge, "price": price})
         return None
 
     # Kelly criterion: f* = (model_prob - market_prob) / (1 - market_prob)
@@ -465,8 +507,10 @@ def find_trade_for_signal(
     if regime == "CRASH":
         log.warning("REGIME CRASH on kalshi_political_bot — skipping trade")
         shadow_log({"bot": "kalshi_political_bot", "regime": regime}, taken=False, reason="crash regime")
+        evaluate_virtual_portfolios({"bot": "kalshi_political_bot", "regime": regime})
         return
     shadow_log({"bot": "political", "ticker": best.ticker, "side": preferred_side, "edge": edge, "price": price, "contracts": contracts}, taken=True)
+    evaluate_virtual_portfolios({"bot": "political", "ticker": best.ticker, "side": preferred_side, "edge": edge, "price": price, "contracts": contracts})
     return best, preferred_side, price, contracts
 
 
