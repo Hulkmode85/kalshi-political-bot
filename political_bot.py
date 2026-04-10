@@ -113,7 +113,7 @@ def check_circuit_breaker() -> bool:
     if _consecutive_losses >= CONSECUTIVE_LOSS_PAUSE:
         return True
     # Use PAPER_BALANCE if available, else 5000
-    _balance = globals().get("PAPER_BALANCE", 5000)
+    _balance = globals().get("PAPER_BALANCE", 2000)
     if _daily_pnl < -DAILY_DRAWDOWN_PAUSE_PCT * _balance:
         return True
     return False
@@ -136,16 +136,16 @@ risk_manager = RiskManager()
 
 class Config:
     PAPER_MODE:             bool  = os.getenv("PAPER_MODE", "true").lower() == "true"
-    PAPER_BALANCE:          float = float(os.getenv("PAPER_BALANCE", "5000"))
+    PAPER_BALANCE:          float = float(os.getenv("PAPER_BALANCE", "2000"))
     KALSHI_API_KEY:         str   = os.getenv("KALSHI_API_KEY", "")
     KALSHI_KEY_ID:          str   = os.getenv("KALSHI_KEY_ID", "")
     PROPUBLICA_API_KEY:     str   = os.getenv("PROPUBLICA_API_KEY", "")  # free at propublica.org/datastore
     ANTHROPIC_API_KEY:      str   = os.getenv("ANTHROPIC_API_KEY", "")
 
-    MIN_EDGE:               float = float(os.getenv("MIN_EDGE", "0.06"))
+    MIN_EDGE:               float = float(os.getenv("MIN_EDGE", "0.05"))
     MAKER_FEE:              float = float(os.getenv("MAKER_FEE", "0.0175"))
     BET_SIZE_USD:           float = float(os.getenv("BET_SIZE_USD", "12.0"))
-    KELLY_FRACTION:         float = float(os.getenv("KELLY_FRACTION", "0.5"))
+    KELLY_FRACTION:         float = float(os.getenv("KELLY_FRACTION", "0.25"))
     MAX_OPEN_POSITIONS:     int   = int(os.getenv("MAX_OPEN_POSITIONS", "8"))
     MIN_PRICE:              int   = int(os.getenv("MIN_PRICE", "10"))
     MAX_PRICE:              int   = int(os.getenv("MAX_PRICE", "90"))
